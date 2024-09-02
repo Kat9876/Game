@@ -23,75 +23,72 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class App {
 
 	public static void main(String[] args) throws IOException {
-	//	String file = "C:/Users/katma/Downloads/take-home-assignment/config.json";
-		String file = args[0];
-		String json = readFileAsString(file);
-		double betAmount = Double.parseDouble(args[1]);
-		ObjectMapper objectMapper = new ObjectMapper();
-		objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-		Input input = objectMapper.readValue(json, Input.class);
-		Map<String, Symbol> standardSymbols =
-			    input.getSymbols().entrySet()
-			         .stream()
-			         .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), e.getValue()))
-			         .filter(e -> "standard".equals(e.getValue().getType()))
-			         .collect(Collectors.toMap(
-			             Map.Entry::getKey,
-			             Map.Entry::getValue
-			         ));
+		try {
+			String file = args[0];
+			String json = readFileAsString(file);
+			double betAmount = Double.parseDouble(args[1]);
+			ObjectMapper objectMapper = new ObjectMapper();
+			objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+			Input input = objectMapper.readValue(json, Input.class);
+			Map<String, Symbol> standardSymbols =
+				    input.getSymbols().entrySet()
+				         .stream()
+				         .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), e.getValue()))
+				         .filter(e -> "standard".equals(e.getValue().getType()))
+				         .collect(Collectors.toMap(
+				             Map.Entry::getKey,
+				             Map.Entry::getValue
+				         ));
+			
+			Map<String, Symbol> bonusSymbols =
+				    input.getSymbols().entrySet()
+				         .stream()
+				         .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), e.getValue()))
+				         .filter(e -> "bonus".equals(e.getValue().getType()))
+				         .collect(Collectors.toMap(
+				             Map.Entry::getKey,
+				             Map.Entry::getValue
+				         ));
+			Response response = new Response();
+			Map<String, Integer> probabilities = new HashMap<>();
+			 List<StandardSymbol> standardSymbolsList = input.getProbabilities().getStandard_symbols();
+		        for (StandardSymbol standardSymbol : standardSymbolsList) {
+		        	probabilities.putAll(standardSymbol.getSymbols());
+		        }
+		        probabilities.putAll(input.getProbabilities().getBonus_symbols().getSymbols());
+		       
+		        String[][] matrix =  generateMatrix(3,3,probabilities, input.getSymbols());
+		        Map<String, List<WinCombination>> rewardMultiplier =checkWinCombinations(matrix,input.getWin_combinations(),standardSymbolsList,bonusSymbols,response);
+		        double reward = calculateTotalReward(rewardMultiplier,betAmount,standardSymbols,bonusSymbols);
+		        
+		       
+		        response.setMatrix(matrix);
+		        response.setReward(reward);
+		        Map<String, List<String>> appliedWinningCombinations = new HashMap<>();
+		        for(Map.Entry<String, List<WinCombination>> x : rewardMultiplier.entrySet()) {
+		        	List<String> list = new ArrayList<>();
+		        	x.getValue().forEach(y->{
+		        		if(y.getLabel()!=null) {
+		        			list.add(y.getLabel());
+		        		}
+		        	});
+		        	if(!"BONUS".equals(x.getKey())) {
+		        		appliedWinningCombinations.put(x.getKey(), list);
+		        	}
+		        	
+				 }
+				response.setApplied_winning_combinations(appliedWinningCombinations);
+		        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
+		        System.out.println(prettyJson);
+		}catch(Exception e) {
+			System.out.println("Error while processing , please try again");
+		}
 		
-		Map<String, Symbol> bonusSymbols =
-			    input.getSymbols().entrySet()
-			         .stream()
-			         .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), e.getValue()))
-			         .filter(e -> "bonus".equals(e.getValue().getType()))
-			         .collect(Collectors.toMap(
-			             Map.Entry::getKey,
-			             Map.Entry::getValue
-			         ));
-		Response response = new Response();
-		Map<String, Integer> probabilities = new HashMap<>();
-		 List<StandardSymbol> standardSymbolsList = input.getProbabilities().getStandard_symbols();
-	        for (StandardSymbol standardSymbol : standardSymbolsList) {
-	        	probabilities.putAll(standardSymbol.getSymbols());
-	        }
-	        probabilities.putAll(input.getProbabilities().getBonus_symbols().getSymbols());
-	       
-	        String[][] matrix =  generateMatrix(3,3,probabilities, input.getSymbols());
-	        Map<String, List<WinCombination>> rewardMultiplier =checkWinCombinations(matrix,input.getWin_combinations(),standardSymbolsList,bonusSymbols,response);
-	        double reward = calculateTotalReward(rewardMultiplier,betAmount,standardSymbols,bonusSymbols);
-	        
-	       
-	        response.setMatrix(matrix);
-	        response.setReward(reward);
-	        Map<String, List<String>> appliedWinningCombinations = new HashMap<>();
-	        for(Map.Entry<String, List<WinCombination>> x : rewardMultiplier.entrySet()) {
-	        	List<String> list = new ArrayList<>();
-	        	x.getValue().forEach(y->{
-	        		if(y.getLabel()!=null) {
-	        			list.add(y.getLabel());
-	        		}
-	        	});
-	        	if(!"BONUS".equals(x.getKey())) {
-	        		appliedWinningCombinations.put(x.getKey(), list);
-	        	}
-	        	
-			 }
-			response.setApplied_winning_combinations(appliedWinningCombinations);
-	        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-	        System.out.println(prettyJson);
 	}
 	
-	public static String readFileAsString(String file)
+	public static String readFileAsString(String file) throws IOException
     {
-        try {
-			return new String(Files.readAllBytes(Paths.get(file)));
-			
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-        return null;
+		return new String(Files.readAllBytes(Paths.get(file)));
     }
 	
 	private static String[][] generateMatrix(int rows, int columns, Map<String, Integer> probabilities, Map<String, Symbol> symbols) {
